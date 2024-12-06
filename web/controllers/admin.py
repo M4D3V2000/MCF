@@ -355,6 +355,7 @@ class admin:
         apiObj = api.API(webServer.logger)
         db = Database("database.db", webServer.logger)
         license = db.getSettings("license", "Free License")
+        tools = {}
 
         if license == "Free License":
             error = "Please change your license to add bot."
@@ -370,6 +371,8 @@ class admin:
                     if os.path.isdir(f"modules/{module}")
                     and os.path.exists(f"modules/{module}/bot.py")
                 ]
+
+                tools = server_modules["tools"]
 
                 for module in server_modules.get("modules", []):
                     module["commit_date"] = module.get("commit_date", "Unknown")
@@ -413,6 +416,7 @@ class admin:
             error=error,
             success=success,
             modules=server_modules.get("modules", []) if not error else [],
+            tools=tools,
             theme=self.theme,
         )
 
@@ -433,6 +437,70 @@ class admin:
                 break
 
         return {"status": "success", "logs": logs}
+
+    def module_accounts(self, requests, webServer):
+        if "admin" not in session:
+            return redirect("/auth/login.py")
+
+        accounts = []
+        if requests.method != "POST" or "bot_id" not in requests.args:
+            return redirect("/admin/bots.py")
+
+        bot = requests.args.get("bot_id")
+
+        bots = self._bots_load_all(webServer)
+        for b in bots:
+            if b["id"] == bot:
+                accounts = b["accounts"]
+                break
+
+        return {"status": "success", "accounts": accounts}
+
+    def bot_disabled_sessions(self, requests, webServer):
+        if "admin" not in session:
+            return redirect("/auth/login.py")
+
+        disabled_sessions = []
+        if requests.method != "POST" or "bot_id" not in requests.args:
+            return redirect("/admin/bots.py")
+
+        bot = requests.args.get("bot_id")
+
+        pyrogram_accounts = []
+        accounts_file = "telegram_accounts/accounts.json"
+        try:
+            if os.path.exists(accounts_file):
+                with open(accounts_file, "r", encoding="utf-8") as f:
+                    pyrogram_accounts = json.load(f)
+        except Exception as e:
+            pass
+
+        bots = self._bots_load_all(webServer)
+        for b in bots:
+            if b["id"] == bot:
+                disabled_sessions = b["disabled_sessions"]
+                break
+
+        accounts = []
+        for account in pyrogram_accounts:
+            if "disabled" in account and account["disabled"]:
+                continue
+
+            acc = {
+                "id": account["id"],
+                "name": account["session_name"],
+                "disabled": False,
+            }
+
+            if account["session_name"] in disabled_sessions:
+                acc["disabled"] = True
+
+            accounts.append(acc)
+        bot_single = self._bots_load_single(
+            bot, Database("database.db", webServer.logger), webServer
+        )
+
+        return {"status": "success", "accounts": accounts}
 
     def bots(self, requests, webServer):
         if "admin" not in session:
